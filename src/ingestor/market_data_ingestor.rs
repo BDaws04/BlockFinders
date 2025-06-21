@@ -4,7 +4,7 @@
 
 use async_trait::async_trait;
 use anyhow::Result;
-use crate::common::types::{Order, OrderBook, Symbol, OHLCVEntry, OHLCV};
+use crate::common::types::{OHLCVEntry, Order, OrderBook,OrderFeesResponse, Symbol, OHLCV, ExchangeStatusResponse};
 
 
 #[async_trait]
@@ -28,6 +28,6 @@ pub trait MarketDataIngestor: Send + Sync {
     async fn unsubscribe_ticker(&self, symbol: &str) -> Result<()>;
 
     // General methods
-    async fn get_all_symbols(&self) -> Result<Vec<Symbol>>;
-    async fn get_fees(&self) -> Result<(f64, f64)>; // (maker_fee, taker_fee)
+    async fn get_exchange_status(&self) -> Result<ExchangeStatusResponse>;
+    async fn get_fees(&self, usd_amount: f64) -> Result<OrderFeesResponse>; 
 }
