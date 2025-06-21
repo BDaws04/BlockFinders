@@ -35,15 +35,6 @@ impl MarketDataIngestor for KrakenIngestor {
         unimplemented!()
     }
 
-    async fn get_buy_price(&self, symbol: Symbol) -> Result<f64> {
-        // Implementation for fetching buy price from Kraken
-        unimplemented!()
-    }
-
-    async fn get_sell_price(&self, symbol: Symbol) -> Result<f64> {
-        // Implementation for fetching sell price from Kraken
-        unimplemented!()
-    }
 
     async fn subscribe_order_book(&self, symbol: Symbol) -> Result<()> {
         // Implementation for subscribing to order book updates

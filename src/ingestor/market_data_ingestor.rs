@@ -4,18 +4,17 @@
 
 use async_trait::async_trait;
 use anyhow::Result;
-use crate::common::types::{OHLCVEntry, Order, OrderBook,OrderFeesResponse, Symbol, OHLCV, ExchangeStatusResponse};
+use crate::common::types::{OrderBookResponse, OrderFeesResponse, Symbol, ExchangeStatusResponse, MarketSnapshotResponse, OHLCVResponse};
 
 
 #[async_trait]
 pub trait MarketDataIngestor: Send + Sync {
     // REST data fetching methods
-    async fn get_order_book(&self, symbol: Symbol) -> Result<OrderBook>;
+    async fn get_order_book(&self, symbol: Symbol) -> Result<OrderBookResponse>;
     
-    async fn get_ohlvc(&self, symbol: Symbol, interval: &str) -> Result<OHLCV>;
+    async fn get_ohlvc(&self, symbol: Symbol) -> Result<OHLCVResponse>;
 
-    async fn get_buy_price(&self, symbol: Symbol) -> Result<f64>;
-    async fn get_sell_price(&self, symbol: Symbol) -> Result<f64>;
+    async fn get_market_snapshot(&self, symbol: Symbol) -> Result<MarketSnapshotResponse>;
 
     // WebSocket methods
     async fn subscribe_order_book(&self, symbol: Symbol) -> Result<()>;
