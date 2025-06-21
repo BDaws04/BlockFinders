@@ -8,7 +8,7 @@ use crate::common::types::{Order, OrderBook, Symbol, OHLCVEntry, OHLCV};
 
 
 #[async_trait]
-pub trait ExchangeClient: Send + Sync {
+pub trait MarketDataIngestor: Send + Sync {
     // REST data fetching methods
     async fn get_order_book(&self, symbol: Symbol) -> Result<OrderBook>;
     
@@ -26,4 +26,8 @@ pub trait ExchangeClient: Send + Sync {
 
     async fn subscribe_ticker(&self, symbol: &str) -> Result<()>;
     async fn unsubscribe_ticker(&self, symbol: &str) -> Result<()>;
+
+    // General methods
+    async fn get_all_symbols(&self) -> Result<Vec<Symbol>>;
+    async fn get_fees(&self) -> Result<(f64, f64)>; // (maker_fee, taker_fee)
 }
