@@ -60,7 +60,8 @@ impl MarketDataIngestor for AlpacaIngestor {
         }
 
 
-        let url = format!("{}/v1beta3/crypto/us/latest/orderbooks?symbol={}%2Fusd", self.base_url, symbol);
+        let url = format!("{}/v1beta3/crypto/us/latest/orderbooks?symbol={}/USD", self.base_url, symbol);
+
         let response = self.client.get(&url).send().await?;
 
         if response.status().is_success() {
@@ -115,7 +116,7 @@ impl MarketDataIngestor for AlpacaIngestor {
         // pub struct OhlcvResponse { pub symbol: Symbol, pub bar: Bar }
         // pub struct Bar { pub close: f64, pub high: f64, pub low: f64, pub open: f64, pub time: String, pub volume: f64, /* etc */ }
 
-        let url = format!("{}/v1beta3/crypto/us/latest/ohlcv?symbol={}%2Fusd", self.base_url, symbol);
+        let url = format!("{}/v1beta3/crypto/us/latest/ohlcv?symbol={}/USD", self.base_url, symbol);
         let response = self.client.get(&url).send().await?;
 
         if response.status().is_success() {
@@ -166,7 +167,7 @@ impl MarketDataIngestor for AlpacaIngestor {
 
 
     async fn get_market_snapshot(&self, symbol: Symbol) -> Result<MarketSnapshotResponse> {
-        let url = format!("{}/v1beta3/crypto/us/latest/quotes?symbol={}%2Fusd", self.base_url, symbol);
+        let url = format!("{}/v1beta3/crypto/us/latest/quotes?symbol={}/USD", self.base_url, symbol);
         let response = self.client.get(&url)
             .send()
             .await?;
@@ -257,4 +258,136 @@ impl MarketDataIngestor for AlpacaIngestor {
         }
     }
 
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use httpmock::MockServer;
+    use httpmock::Method::GET;
+    use tokio;
+
+    fn make_test_ingestor(base_url: &str) -> AlpacaIngestor {
+        AlpacaIngestor::new(
+            "fake_api_key".to_string(),
+            "fake_secret".to_string(),
+            base_url.to_string()
+        )
+    }
+
+    #[tokio::test]
+    async fn test_get_order_book_success() {
+        let server = MockServer::start();
+        let mock = server.mock(|when, then| {
+            when.method(GET)
+                .path("/v1beta3/crypto/us/latest/orderbooks")
+                .query_param("symbol", "BTC/USD");
+            then.status(200)
+                .header("content-type", "application/json")
+                .body(r#"{
+                    "BTC/USD": {
+                        "a": [{"p": 30000.0, "s": 1.0}],
+                        "b": [{"p": 29950.0, "s": 2.0}]
+                    }
+                }"#);
+        });
+
+        let ingestor = make_test_ingestor(&server.base_url());
+        let result = ingestor.get_order_book(Symbol::from("BTC")).await.unwrap();
+
+        assert_eq!(result.book.asks[0].price, 30000.0);
+        assert_eq!(result.book.bids[0].quantity, 2.0);
+        mock.assert();
+    }
+
+    #[tokio::test]
+    async fn test_get_ohlcv_success() {
+        let server = MockServer::start();
+        let mock = server.mock(|when, then| {
+            when.method(GET)
+                .path("/v1beta3/crypto/us/latest/ohlcv")
+                .query_param("symbol", "ETH/USD");
+            then.status(200)
+                .header("content-type", "application/json")
+                .body(r#"{
+                    "bars": {
+                        "ETH/USD": {
+                            "c": 2100.0,
+                            "h": 2150.0,
+                            "l": 2080.0,
+                            "n": 1000,
+                            "o": 2095.0,
+                            "t": "2025-06-21T00:00:00Z",
+                            "v": 300.0,
+                            "vw": 2105.0
+                        }
+                    }
+                }"#);
+        });
+
+        let ingestor = make_test_ingestor(&server.base_url());
+        let result = ingestor.get_ohlvc(Symbol::from("ETH")).await.unwrap();;
+
+        assert_eq!(result.bar.close, 2100.0);
+        assert_eq!(result.bar.volume, 300.0);
+        mock.assert();
+    }
+
+    #[tokio::test]
+    async fn test_get_market_snapshot_success() {
+        let server = MockServer::start();
+        let mock = server.mock(|when, then| {
+            when.method(GET)
+                .path("/v1beta3/crypto/us/latest/quotes")
+                .query_param("symbol", "SOL/USD");
+            then.status(200)
+                .header("content-type", "application/json")
+                .body(r#"{ "ap": 45.0, "as": 1.5, "bp": 44.5, "bs": 2.0 }"#);
+        });
+
+        let ingestor = make_test_ingestor(&server.base_url());
+        let result = ingestor.get_market_snapshot(Symbol::from("SOL")).await.unwrap();
+
+        assert_eq!(result.ask_price, 45.0);
+        assert_eq!(result.bid_quantity, 2.0);
+        mock.assert();
+    }
+
+    #[tokio::test]
+    async fn test_get_exchange_status_online() {
+        let server = MockServer::start();
+        let mock = server.mock(|when, then| {
+            when.method(GET)
+                .path("/v2/clock");
+            then.status(200)
+                .header("content-type", "application/json")
+                .body(r#"{ "is_open": true }"#);
+        });
+
+        let ingestor = make_test_ingestor(&server.base_url());
+        let result = ingestor.get_exchange_status().await.unwrap();
+
+        use crate::common::types::ExchangeStatus;
+        assert_eq!(result.status, ExchangeStatus::ONLINE);
+        mock.assert();
+    }
+
+    #[tokio::test]
+    async fn test_get_fees_tiered() {
+        let ingestor = make_test_ingestor("http://localhost");
+        let tiers = vec![
+            (50_000.0, 0.0015),
+            (200_000.0, 0.0012),
+            (800_000.0, 0.0010),
+            (5_000_000.0, 0.0008),
+            (20_000_000.0, 0.0005),
+            (40_000_000.0, 0.0002),
+            (90_000_000.0, 0.0002),
+            (150_000_000.0, 0.0),
+        ];
+        for (amount, expected_fee) in tiers {
+            let res = ingestor.get_fees(amount).await.unwrap();
+            assert_eq!(res.maker_fee, expected_fee);
+        }
+    }
 }

@@ -26,6 +26,16 @@ impl fmt::Display for Symbol {
         }
     }
 }
+impl From<&str> for Symbol {
+    fn from(s: &str) -> Self {
+        match s {
+            "BTC" => Symbol::BTC,
+            "ETH" => Symbol::ETH,
+            "SOL" => Symbol::SOL,
+            _ => panic!("Unknown symbol: {}", s),
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct Order {
@@ -86,7 +96,7 @@ pub struct MarketSnapshotResponse {
     pub bid_quantity: f64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum ExchangeStatus{
     ONLINE,
     OFFLINE,

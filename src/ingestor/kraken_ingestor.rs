@@ -1,11 +1,11 @@
 use crate::ingestor::market_data_ingestor::MarketDataIngestor;
 
-use crate::common::types::{OrderBook, Symbol, OHLCV};
 use anyhow::Result;
 use reqwest::Client;
 
-use crate::common::types::{OrderFeesResponse, ExchangeStatusResponse};
-
+use crate::common::types::{OrderFeesResponse, ExchangeStatusResponse, MarketSnapshotResponse, OrderBookResponse, OHLCVResponse};
+use crate::common::types::{OrderBook, PriceLevel, Symbol, Bar};
+use crate::common::types::WsMessage;
 pub struct KrakenIngestor{
     api_key: String,
     client: Client,
@@ -13,7 +13,7 @@ pub struct KrakenIngestor{
 }
 
 impl KrakenIngestor {
-    pub fn new(api_key: String) -> Self {
+    pub fn new(api_key: String, base_url: String) -> Self {
         KrakenIngestor {
             api_key,
             client: Client::new(),
@@ -25,15 +25,19 @@ impl KrakenIngestor {
 #[async_trait::async_trait]
 impl MarketDataIngestor for KrakenIngestor {
     // Implement the methods defined in the MarketDataIngestor trait
-    async fn get_order_book(&self, symbol: Symbol) -> Result<OrderBook> {
+    async fn get_order_book(&self, symbol: Symbol) -> Result<OrderBookResponse> {
         // Implementation for fetching order book from Kraken
         unimplemented!()
     }
 
-    async fn get_ohlvc(&self, symbol: Symbol, interval: &str) -> Result<OHLCV> {
+    async fn get_ohlvc(&self, symbol: Symbol) -> Result<OHLCVResponse> {
         // Implementation for fetching OHLCV data from Kraken
         unimplemented!()
     }
+
+    async fn get_market_snapshot(&self, symbol: Symbol) -> Result<MarketSnapshotResponse> {
+        unimplemented!()
+    }   
 
 
     async fn subscribe_order_book(&self, symbol: Symbol) -> Result<()> {
@@ -67,7 +71,7 @@ impl MarketDataIngestor for KrakenIngestor {
     }
 
     async fn get_exchange_status(&self) -> Result<ExchangeStatusResponse> {
-        
+        unimplemented!()
     }
 
     async fn get_fees(&self, usd_amount: f64) -> Result<OrderFeesResponse> { 
