@@ -11,7 +11,7 @@ pub enum OrderSide {
     Sell,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Eq, PartialEq, Serialize)]
 pub enum Symbol{
     BTC,
     ETH,
