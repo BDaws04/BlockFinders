@@ -4,7 +4,7 @@
 
 use async_trait::async_trait;
 use anyhow::Result;
-use crate::common::types::{Order, OrderBook, Symbol, OHLCVEntry, OHLCV};
+use crate::common::types::{Order, OrderBook, Symbol};
 
 #[async_trait]
 pub trait TradeExecutor: Send + Sync {
