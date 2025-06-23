@@ -5,39 +5,26 @@ use crate::ingestor::market_data_ingestor::MarketDataIngestor;
 use anyhow::Result;
 use reqwest::Client;
 
-use tokio::sync::mpsc::{Sender};
 use serde::Deserialize;
 
 use crate::common::types::{OrderFeesResponse, ExchangeStatusResponse, MarketSnapshotResponse, OrderBookResponse, OHLCVResponse};
 use crate::common::types::{OrderBook, PriceLevel, Symbol, Bar};
-use crate::common::types::WsMessage;
+
 
 pub struct AlpacaIngestor {
     api_key: String,
     secret_key: String,
     client: Client,
     base_url: String,
-
-    ws_sender: Sender<WsMessage>  
 }
 
 impl AlpacaIngestor {
     pub fn new(api_key: String, secret_key: String, base_url: String) -> Self {
-
-        let (ws_sender, _ws_receiver) = tokio::sync::mpsc::channel(100);
-        // remember to handle receiver
-        /*
-        tokio::spawn(async move {
-            websocket_task(ws_receiver).await;
-        });
-         */
-
         AlpacaIngestor {
             api_key,
             secret_key,
             client: Client::new(),
             base_url,
-            ws_sender,
         }
     }
 }
@@ -111,10 +98,6 @@ impl MarketDataIngestor for AlpacaIngestor {
         struct RawBars {
             bars: HashMap<String, RawBar>,
         }
-
-        // Your common structs (assumed defined elsewhere):
-        // pub struct OhlcvResponse { pub symbol: Symbol, pub bar: Bar }
-        // pub struct Bar { pub close: f64, pub high: f64, pub low: f64, pub open: f64, pub time: String, pub volume: f64, /* etc */ }
 
         let url = format!("{}/v1beta3/crypto/us/latest/ohlcv?symbol={}/USD", self.base_url, symbol);
         let response = self.client.get(&url).send().await?;
@@ -195,35 +178,6 @@ impl MarketDataIngestor for AlpacaIngestor {
             
     }
 
-    async fn subscribe_order_book(&self, symbol: Symbol) -> Result<()> {
-        // Implementation for subscribing to order book updates
-        unimplemented!()
-    }
-
-    async fn unsubscribe_order_book(&self, symbol: Symbol) -> Result<()> {
-        // Implementation for unsubscribing from order book updates
-        unimplemented!()
-    }
-
-    async fn subscribe_ohlcv(&self, symbol: Symbol, interval: &str) -> Result<()> {
-        // Implementation for subscribing to OHLCV updates
-        unimplemented!()
-    }
-
-    async fn unsubscribe_ohlcv(&self, symbol: Symbol, interval: &str) -> Result<()> {
-        // Implementation for unsubscribing from OHLCV updates
-        unimplemented!()
-    }
-
-    async fn subscribe_ticker(&self, symbol: &str) -> Result<()> {
-        // Implementation for subscribing to ticker updates
-        unimplemented!()
-    }
-
-    async fn unsubscribe_ticker(&self, symbol: &str) -> Result<()> {
-        // Implementation for unsubscribing from ticker updates
-        unimplemented!()
-    }
 
     async fn get_exchange_status(&self) -> Result<ExchangeStatusResponse> {
         let url = format!("{}/v2/clock", self.base_url);

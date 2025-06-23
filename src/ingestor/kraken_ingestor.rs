@@ -4,8 +4,8 @@ use anyhow::Result;
 use reqwest::Client;
 
 use crate::common::types::{OrderFeesResponse, ExchangeStatusResponse, MarketSnapshotResponse, OrderBookResponse, OHLCVResponse};
-use crate::common::types::{OrderBook, PriceLevel, Symbol, Bar};
-use crate::common::types::WsMessage;
+use crate::common::types::Symbol;
+
 pub struct KrakenIngestor{
     api_key: String,
     client: Client,
@@ -38,37 +38,6 @@ impl MarketDataIngestor for KrakenIngestor {
     async fn get_market_snapshot(&self, symbol: Symbol) -> Result<MarketSnapshotResponse> {
         unimplemented!()
     }   
-
-
-    async fn subscribe_order_book(&self, symbol: Symbol) -> Result<()> {
-        // Implementation for subscribing to order book updates
-        unimplemented!()
-    }
-
-    async fn unsubscribe_order_book(&self, symbol: Symbol) -> Result<()> {
-        // Implementation for unsubscribing from order book updates
-        unimplemented!()
-    }
-
-    async fn subscribe_ohlcv(&self, symbol: Symbol, interval: &str) -> Result<()> {
-        // Implementation for subscribing to OHLCV updates
-        unimplemented!()
-    }
-
-    async fn unsubscribe_ohlcv(&self, symbol: Symbol, interval: &str) -> Result<()> {
-        // Implementation for unsubscribing from OHLCV updates
-        unimplemented!()
-    }
-
-    async fn subscribe_ticker(&self, symbol: &str) -> Result<()> {
-        // Implementation for subscribing to ticker updates
-        unimplemented!()
-    }
-
-    async fn unsubscribe_ticker(&self, symbol: &str) -> Result<()> {
-        // Implementation for unsubscribing from ticker updates
-        unimplemented!()
-    }
 
     async fn get_exchange_status(&self) -> Result<ExchangeStatusResponse> {
         unimplemented!()
