@@ -6,22 +6,23 @@ use reqwest::Client;
 use serde::Deserialize;
 
 use crate::common::types::{OrderFeesResponse, ExchangeStatusResponse, MarketSnapshotResponse, OrderBookResponse, OHLCVResponse};
-use crate::common::types::{OrderBook, PriceLevel, Symbol};
+use crate::common::types::{OrderBook, PriceLevel, Symbol, Exchanges};
 
 pub struct BybitIngestor {
     client: Client,
     base_url: String,
     api_key: String,
+    secret_key: String,
 }
 
 impl BybitIngestor {
-    pub fn new(api_key: String) -> Self {
+    pub fn new(api_key: String, secret_key: String, base_url: String) -> Self {
         let client = Client::new();
-        let base_url = "https://api.bybit.com".to_string();
         BybitIngestor {
             client,
             base_url,
             api_key,
+            secret_key,
         }
     }
 }
@@ -47,7 +48,7 @@ impl MarketDataIngestor for BybitIngestor {
             result: RawResult,
         }
 
-        let pair = symbol.to_string() + "/USDT";
+        let pair = symbol.to_string() + "USDT";
         let url = format!("{}/v5/market/orderbook?category=spot&symbol={}&limit=100", self.base_url, pair);
 
         let response = self.client.get(&url).send().await?;
@@ -63,6 +64,7 @@ impl MarketDataIngestor for BybitIngestor {
                     Some(PriceLevel {
                         price: pl.0.parse().ok()?,
                         quantity: pl.1.parse().ok()?,
+                        exchange: Exchanges::Bybit
                     })
                 }).collect();
 
@@ -70,6 +72,7 @@ impl MarketDataIngestor for BybitIngestor {
                     Some(PriceLevel {
                         price: pl.0.parse().ok()?,
                         quantity: pl.1.parse().ok()?,
+                        exchange: Exchanges::Bybit
                     })
                 }).collect();
 
@@ -122,11 +125,12 @@ mod tests {
     use tokio;
 
     // Helper to create a BybitIngestor with a mocked base_url
-    fn make_test_ingestor(api_key: &str, base_url: &str) -> BybitIngestor {
+    fn make_test_ingestor(api_key: &str, secret_key: &str, base_url: &str) -> BybitIngestor {
         BybitIngestor {
             client: reqwest::Client::new(),
             base_url: base_url.to_string(),
             api_key: api_key.to_string(),
+            secret_key: secret_key.to_string(),
         }
     }
 
@@ -157,7 +161,7 @@ mod tests {
                 .body(mock_response.to_string());
         });
 
-        let ingestor = make_test_ingestor("test_api_key", &server.base_url());
+        let ingestor = make_test_ingestor("test_api_key", "test_secret_key", &server.base_url());
         let result = ingestor.get_order_book(symbol.clone()).await.unwrap();
 
         mock.assert();
@@ -186,7 +190,7 @@ mod tests {
             then.status(500);
         });
 
-        let ingestor = make_test_ingestor("test_api_key", &server.base_url());
+        let ingestor = make_test_ingestor("test_api_key", "test_secret_key", &server.base_url());
         let result = ingestor.get_order_book(symbol.clone()).await.unwrap();
 
         mock.assert();
@@ -223,7 +227,7 @@ mod tests {
                 .body(mock_response.to_string());
         });
 
-        let ingestor = make_test_ingestor("test_api_key", &server.base_url());
+        let ingestor = make_test_ingestor("test_api_key", "test_secret_key", &server.base_url());
         let result = ingestor.get_order_book(symbol.clone()).await.unwrap();
 
         mock.assert();
@@ -243,7 +247,7 @@ mod tests {
             then.status(200);
         });
 
-        let ingestor = make_test_ingestor("api_key", &server.base_url());
+        let ingestor = make_test_ingestor("api_key", "secret_key", &server.base_url());
         let result = ingestor.get_exchange_status().await.unwrap();
 
         mock.assert();
@@ -261,7 +265,7 @@ mod tests {
             then.status(500);
         });
 
-        let ingestor = make_test_ingestor("api_key", &server.base_url());
+        let ingestor = make_test_ingestor("api_key", "secret_key", &server.base_url());
         let result = ingestor.get_exchange_status().await.unwrap();
 
         mock.assert();
@@ -271,7 +275,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_fees_returns_expected() {
-        let ingestor = make_test_ingestor("api_key", "http://localhost");
+        let ingestor = make_test_ingestor("api_key", "secret_key", "http://localhost");
         let res = ingestor.get_fees(1000.0).await.unwrap();
         assert!((res.maker_fee - 0.0010).abs() < 1e-9);
         assert!((res.taker_fee - 0.0010).abs() < 1e-9);

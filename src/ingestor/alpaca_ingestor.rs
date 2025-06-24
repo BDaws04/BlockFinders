@@ -8,7 +8,7 @@ use reqwest::Client;
 use serde::Deserialize;
 
 use crate::common::types::{OrderFeesResponse, ExchangeStatusResponse, MarketSnapshotResponse, OrderBookResponse, OHLCVResponse};
-use crate::common::types::{OrderBook, PriceLevel, Symbol, Bar};
+use crate::common::types::{OrderBook, PriceLevel, Symbol, Bar, Exchanges};
 
 
 pub struct AlpacaIngestor {
@@ -33,7 +33,6 @@ impl AlpacaIngestor {
 impl MarketDataIngestor for AlpacaIngestor {
     // Implement the methods defined in the MarketDataIngestor trait
     async fn get_order_book(&self, symbol: Symbol) -> Result<OrderBookResponse> {
-
         #[derive(Debug, Clone, Deserialize)]
         struct RawPriceLevel {
             p: f64,
@@ -46,22 +45,32 @@ impl MarketDataIngestor for AlpacaIngestor {
             b: Vec<RawPriceLevel>,
         }
 
+        #[derive(Debug, Clone, Deserialize)]
+        struct OrderBooksWrapper {
+            orderbooks: HashMap<String, RawOrderBook>,
+        }
 
-        let url = format!("{}/v1beta3/crypto/us/latest/orderbooks?symbol={}/USD", self.base_url, symbol);
-
+        let url = format!("{}/v1beta3/crypto/us/latest/orderbooks?symbols={}%2FUSD", self.base_url, symbol);
         let response = self.client.get(&url).send().await?;
 
         if response.status().is_success() {
             let text = response.text().await?;
 
-            let raw_map: HashMap<String, RawOrderBook> = serde_json::from_str(&text)?;
-
+            let wrapper: OrderBooksWrapper = serde_json::from_str(&text)?;
             let key = format!("{}/USD", symbol.to_string().to_uppercase());
 
-            if let Some(raw_book) = raw_map.get(&key) {
+            if let Some(raw_book) = wrapper.orderbooks.get(&key) {
                 let book = OrderBook {
-                    asks: raw_book.a.iter().map(|pl| PriceLevel { price: pl.p, quantity: pl.s }).collect(),
-                    bids: raw_book.b.iter().map(|pl| PriceLevel { price: pl.p, quantity: pl.s }).collect(),
+                    asks: raw_book.a.iter().map(|pl| PriceLevel {
+                        price: pl.p,
+                        quantity: pl.s,
+                        exchange: Exchanges::Alpaca,
+                    }).collect(),
+                    bids: raw_book.b.iter().map(|pl| PriceLevel {
+                        price: pl.p,
+                        quantity: pl.s,
+                        exchange: Exchanges::Alpaca,
+                    }).collect(),
                 };
 
                 Ok(OrderBookResponse { symbol, book })
@@ -78,6 +87,7 @@ impl MarketDataIngestor for AlpacaIngestor {
             })
         }
     }
+
 
 
     async fn get_ohlvc(&self, symbol: Symbol) -> Result<OHLCVResponse> {

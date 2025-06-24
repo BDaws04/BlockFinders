@@ -4,7 +4,7 @@ use anyhow::Result;
 use reqwest::Client;
 
 use crate::common::types::{OrderFeesResponse, ExchangeStatusResponse, MarketSnapshotResponse, OrderBookResponse, OHLCVResponse};
-use crate::common::types::{OrderBook, PriceLevel};
+use crate::common::types::{OrderBook, PriceLevel, Exchanges};
 use crate::common::types::Symbol;
 
 use serde::Deserialize;
@@ -12,14 +12,16 @@ use  std::collections::HashMap;
 
 pub struct KrakenIngestor{
     api_key: String,
+    secret_key: String,
     client: Client,
     base_url: String,
 }
 
 impl KrakenIngestor {
-    pub fn new(api_key: String, base_url: String) -> Self {
+    pub fn new(api_key: String, secret_key: String, base_url: String) -> Self {
         KrakenIngestor {
             api_key,
+            secret_key,
             client: Client::new(),
             base_url,
         }
@@ -47,7 +49,7 @@ impl MarketDataIngestor for KrakenIngestor {
         }
 
         let pair = symbol.to_string() + "/USD";
-        let url = format!("https://api.kraken.com/0/public/Depth?pair={}", pair);
+        let url = format!("{}Depth?pair={}", self.base_url, pair);
 
         let response = self.client.get(&url).send().await?;
 
@@ -64,6 +66,7 @@ impl MarketDataIngestor for KrakenIngestor {
                     PriceLevel {
                         price: level.0.parse().unwrap_or(0.0),
                         quantity: level.1.parse().unwrap_or(0.0),
+                        exchange: Exchanges::Kraken,
                     }
                 }).collect();
 
@@ -71,6 +74,7 @@ impl MarketDataIngestor for KrakenIngestor {
                     PriceLevel {
                         price: level.0.parse().unwrap_or(0.0),
                         quantity: level.1.parse().unwrap_or(0.0),
+                        exchange: Exchanges::Kraken,
                     }
                 }).collect();
 
@@ -93,7 +97,7 @@ impl MarketDataIngestor for KrakenIngestor {
 
     async fn get_ohlvc(&self, symbol: Symbol) -> Result<OHLCVResponse> {
         let pair: String = symbol.to_string() + "/USD";
-        let url = format!("{}/0/public/Ticker?pair={}", self.base_url, pair);
+        let url = format!("{}Ticker?pair={}", self.base_url, pair);
         let response = self.client.get(&url)
             .send()
             .await?;
@@ -129,7 +133,7 @@ impl MarketDataIngestor for KrakenIngestor {
 
     async fn get_market_snapshot(&self, symbol: Symbol) -> Result<MarketSnapshotResponse> {
         let pair: String = symbol.to_string() + "/USD";
-        let url = format!("{}/0/public/Ticker?pair={}", self.base_url, pair);
+        let url = format!("{}Ticker?pair={}", self.base_url, pair);
         let response = self.client.get(&url)
             .send()
             .await?;
@@ -156,7 +160,7 @@ impl MarketDataIngestor for KrakenIngestor {
     }   
 
     async fn get_exchange_status(&self) -> Result<ExchangeStatusResponse> {
-        let url = format!("{}/0/public/SystemStatus", self.base_url);
+        let url = format!("{}SystemStatus", self.base_url);
         let response = self.client.get(&url)
             .send()
             .await?;
@@ -203,11 +207,12 @@ mod tests {
     use crate::common::types::{ExchangeStatus, Symbol};
 
     // Helper to create a KrakenIngestor with a mocked base_url
-    fn make_test_ingestor(api_key: &str, base_url: &str) -> KrakenIngestor {
+    fn make_test_ingestor(api_key: &str, secret_key: &str, base_url: &str) -> KrakenIngestor {
         KrakenIngestor {
             client: reqwest::Client::new(),
             base_url: base_url.to_string(),
             api_key: api_key.to_string(),
+            secret_key: secret_key.to_string(),
         }
     }
 
@@ -235,7 +240,7 @@ mod tests {
                 .body(mock_response.to_string());
         });
 
-        let ingestor = make_test_ingestor("api_key", &server.base_url());
+        let ingestor = make_test_ingestor("api_key", "secret_key", &server.base_url());
         let result = ingestor.get_order_book(symbol.clone()).await.unwrap();
 
         println!("Order book response: {:?}", result.book.asks);
@@ -273,7 +278,7 @@ mod tests {
                 .body(mock_response.to_string());
         });
 
-        let ingestor = make_test_ingestor("api_key", &server.base_url());
+        let ingestor = make_test_ingestor("api_key", "secret_key", &server.base_url());
         let result = ingestor.get_ohlvc(symbol.clone()).await.unwrap();
 
         assert_eq!(result.symbol, symbol);
@@ -312,7 +317,7 @@ mod tests {
                 .body(mock_response.to_string());
         });
 
-        let ingestor = make_test_ingestor("api_key", &server.base_url());
+        let ingestor = make_test_ingestor("api_key", "secret_key", &server.base_url());
         let result = ingestor.get_market_snapshot(symbol.clone()).await.unwrap();
 
         assert_eq!(result.symbol, symbol);
@@ -343,7 +348,7 @@ mod tests {
                 .body(mock_response.to_string());
         });
 
-        let ingestor = make_test_ingestor("api_key", &server.base_url());
+        let ingestor = make_test_ingestor("api_key", "secret_key", &server.base_url());
         let result = ingestor.get_exchange_status().await.unwrap();
 
         assert_eq!(result.status, ExchangeStatus::ONLINE);
@@ -370,7 +375,7 @@ mod tests {
                 .body(mock_response.to_string());
         });
 
-        let ingestor = make_test_ingestor("api_key", &server.base_url());
+        let ingestor = make_test_ingestor("api_key", "secret_key",  &server.base_url());
         let result = ingestor.get_exchange_status().await.unwrap();
 
         assert_eq!(result.status, ExchangeStatus::MAINTENANCE);
@@ -397,7 +402,7 @@ mod tests {
                 .body(mock_response.to_string());
         });
 
-        let ingestor = make_test_ingestor("api_key", &server.base_url());
+        let ingestor = make_test_ingestor("api_key", "secret_key", &server.base_url());
         let result = ingestor.get_exchange_status().await.unwrap();
 
         assert_eq!(result.status, ExchangeStatus::OFFLINE);
@@ -407,7 +412,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_fees_tiered() {
-        let ingestor = make_test_ingestor("api_key", "http://localhost");
+        let ingestor = make_test_ingestor("api_key", "secret_key", "http://localhost");
         let tiers = vec![
             (5_000.0, (0.0025, 0.004)),
             (20_000.0, (0.0020, 0.0035)),
