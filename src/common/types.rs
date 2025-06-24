@@ -5,10 +5,75 @@ use core::fmt;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+use std::cmp::Ordering;
+
 #[derive(Debug, Clone)]
+pub struct MaxPriceLevel(pub PriceLevel);
+
+impl Eq for MaxPriceLevel {}
+
+impl PartialEq for MaxPriceLevel {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.price == other.0.price
+    }
+}
+
+impl Ord for MaxPriceLevel {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.0.price.partial_cmp(&other.0.price).unwrap_or(Ordering::Equal)
+    }
+}
+
+impl PartialOrd for MaxPriceLevel {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct MinPriceLevel(pub PriceLevel);
+
+impl Eq for MinPriceLevel {}
+
+impl PartialEq for MinPriceLevel {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.price == other.0.price
+    }
+}
+
+impl Ord for MinPriceLevel {
+    fn cmp(&self, other: &Self) -> Ordering {
+        other.0.price.partial_cmp(&self.0.price).unwrap_or(Ordering::Equal)
+    }
+}
+
+impl PartialOrd for MinPriceLevel {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+
+#[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
 pub enum OrderSide {
     Buy,
     Sell,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Eq, PartialEq, Serialize)]
+pub enum Exchanges {
+    Bybit,
+    Kraken,
+    Alpaca,
+}
+
+#[derive(Debug, Clone)]
+pub struct RoutedOrder {
+    pub symbol: Symbol,
+    pub side: OrderSide,
+    pub bybit_volume: f64,
+    pub kraken_volume: f64,
+    pub alpaca_volume: f64,
 }
 
 #[derive(Debug, Clone, Deserialize, Eq, PartialEq, Serialize)]
@@ -72,10 +137,11 @@ pub struct OrderBook {
     pub bids: Vec<PriceLevel>, 
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Copy)]
 pub struct PriceLevel {
     pub price: f64,    
-    pub quantity: f64, 
+    pub quantity: f64,
+    pub exchange: Exchanges,
 }
 
 
