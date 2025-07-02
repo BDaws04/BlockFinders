@@ -10,12 +10,14 @@ use tokio::task;
 use tokio_tungstenite::tungstenite;
 use futures_util::SinkExt;
 use futures_util::StreamExt;
+use reqwest::Client;
 
 pub struct KrakenExchange {
     api_key: String,
     api_secret: String,
     order_url: String,
     websocket_url: String,
+    client: Client,
 }
 #[derive(Serialize)]
 pub struct OrderBookSubscribe {
@@ -37,6 +39,7 @@ impl KrakenExchange {
             api_secret,
             order_url: "https://api.kraken.com/0/private/AddOrder".to_string(),
             websocket_url: "wss://ws.kraken.com/v2".to_string(),
+            client: Client::new(),
         }
     }
  }
@@ -102,10 +105,11 @@ impl Exchange for KrakenExchange {
         unimplemented!()
     }
     async fn place_order(&self, _order: Order) -> Result<(), ExchangeError> {
-        unimplemented!()
+        let url: String = format!("{}", self.order_url);
+        Ok(())
     }
     async fn get_fees(&self) -> Result<f64, ExchangeError> {
-        unimplemented!()
+        Ok(0.0026)
     }
 
 }
