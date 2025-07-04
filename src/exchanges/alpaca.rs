@@ -46,7 +46,7 @@ impl AlpacaExchange {
             api_key,
             api_secret,
             order_url: "https://api.alpaca.markets/v2/orders".to_string(),
-            websocket_url: "wss://stream.data.alpaca.markets/v2/iex".to_string(),
+            websocket_url: "wss://stream.data.alpaca.markets/v1beta3/crypto/us".to_string(),
             client: Client::new(),
             active: Arc::new(AtomicBool::new(false)),
             fees: 0.0
@@ -57,10 +57,114 @@ impl AlpacaExchange {
 #[async_trait::async_trait]
 impl Exchange for AlpacaExchange {
     async fn subscribe_ob(&self, symbol: &str) -> Result<(), ExchangeError> {
-        unimplemented!();
+        if symbol != TICKER {
+            return Err(ExchangeError::InvalidSymbol(symbol.to_string()));
+        }
+
+        let symbol_str = format!("{}/USD", symbol);
+
+        let auth_message = serde_json::json!({
+            "action": "auth",
+            "key": self.api_key,
+            "secret": self.api_secret,
+        });
+
+        let json_auth = serde_json::to_string(&auth_message)
+            .map_err(|e| ExchangeError::SubscriptionFailed(format!("Failed to serialize subscribe message: {}", e)))?;
+
+        let (mut socket, _) = connect_async(&self.websocket_url).await?;
+
+        if let Some(result) = socket.next().await {
+            match result {
+                Ok(Message::Text(text)) => {
+                    if !text.contains("success") {
+                        return Err(ExchangeError::SubscriptionFailed("Authentication failed".to_string()));
+                    }
+                    println!("Successfully connected");
+                }
+                Ok(Message::Close(_)) => {
+                    return Err(ExchangeError::ConnectionClosed);
+                }
+                Err(e) => {
+                    return Err(ExchangeError::WebSocketError(e));
+                }
+                _ => {}
+            }
+        }
+
+        socket.send(Message::Text(json_auth.into())).await?;
+
+        if let Some(result) = socket.next().await {
+            match result {
+                Ok(Message::Text(text)) => {
+                    println!("Received auth response: {}", text);
+                    if !text.contains("authenticated") {
+                        return Err(ExchangeError::SubscriptionFailed("Authentication failed".to_string()));
+                    }
+                    println!("Successfully authenticated");
+                }
+                Ok(Message::Close(_)) => {
+                    return Err(ExchangeError::ConnectionClosed);
+                }
+                Err(e) => {
+                    return Err(ExchangeError::WebSocketError(e));
+                }
+                _ => {}
+            }
+        }
+
+        let subscribe_message = serde_json::json!({
+            "action": "subscribe",
+            "orderbooks" : [symbol_str],
+        });
+
+        let json_subscribe = serde_json::to_string(&subscribe_message)
+            .map_err(|e| ExchangeError::SubscriptionFailed(format!("Failed to serialize subscribe message: {}", e)))?;
+
+        socket.send(Message::Text(json_subscribe.into())).await?;
+
+
+        self.active.store(true, Ordering::SeqCst);
+
+        let active = Arc::clone(&self.active);
+        let symbol_owned = symbol.to_string();
+
+        tokio::spawn(async move {
+            while let Some(result) = socket.next().await {
+                match result {
+                    Ok(Message::Text(text)) => {
+                        println!("Received: {}", text);
+                    }
+                    Ok(Message::Close(_)) => {
+                        println!("Connection closed");
+                        break;
+                    }
+                    Err(e) => {
+                        eprintln!("WebSocket error: {}", e);
+                        break;
+                    }
+                    _ => {}
+                }
+                if !active.load(Ordering::SeqCst) {
+                    eprintln!("Unsubscribing from order book for {}", symbol_owned);
+                    socket.close(None).await.ok();
+                    active.store(false, Ordering::SeqCst);
+                    break; 
+                }
+            }
+        });
+
+        Ok(())
+
     }
     async fn unsubscribe_ob(&self, symbol: &str) -> Result<(), ExchangeError> {
-        unimplemented!();
+        match self.active.load(Ordering::SeqCst) {
+            true => {
+                self.active.store(false, Ordering::SeqCst);
+                Ok(())
+            }
+            false => Err(ExchangeError::ConnectionClosed),
+        }
     }
     async fn place_order(&self, order: Order) -> Result<(), OrderPlaceError> {
         let pair = format!("{}/USD", order.symbol);
