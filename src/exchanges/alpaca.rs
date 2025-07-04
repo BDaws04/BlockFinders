@@ -2,18 +2,12 @@ use crate::exchanges::exchange::Exchange;
 use crate::errors::{ExchangeError, OrderPlaceError};
 use crate::types::{Order, OrderSide};
 use crate::config::{
-    ORDER_BOOK_DEPTH,
     TICKER,
 };
 use serde::Serialize;
 use reqwest::Client;
-use std::time::{SystemTime, UNIX_EPOCH};
-use hmac::{Hmac, Mac};
-use sha2::{Digest, Sha256, Sha512};
-use base64::{engine::general_purpose, Engine as _};
 use tokio_tungstenite::tungstenite::protocol::Message;
 use tokio_tungstenite::connect_async;
-use std::collections::HashMap;
 use futures_util::sink::SinkExt;
 use futures_util::stream::StreamExt;
 use std::sync::{
