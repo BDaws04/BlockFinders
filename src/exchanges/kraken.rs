@@ -6,17 +6,20 @@ use crate::config::{
     TICKER,
 };
 use serde::Serialize;
-use tokio_tungstenite::tungstenite::protocol::Message;
-use tokio_tungstenite::connect_async;
-use futures_util::SinkExt;
-use futures_util::StreamExt;
 use reqwest::Client;
-use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 use hmac::{Hmac, Mac};
 use sha2::{Digest, Sha256, Sha512};
 use base64::{engine::general_purpose, Engine as _};
-use tokio::sync::Mutex;
+use tokio_tungstenite::tungstenite::protocol::Message;
+use tokio_tungstenite::connect_async;
+use std::collections::HashMap;
+use futures_util::sink::SinkExt;
+use futures_util::stream::StreamExt;
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering}
+};
 
 type HmacSha512 = Hmac<Sha512>;
 
@@ -26,7 +29,7 @@ pub struct KrakenExchange {
     order_url: String,
     websocket_url: String,
     client: Client,
-    socket: Mutex<Option<tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>>>,
+    active: Arc<AtomicBool>,
 }
 #[derive(Serialize)]
 pub struct OrderBookSubscribe {
@@ -49,7 +52,7 @@ impl KrakenExchange {
             order_url: "https://api.kraken.com/0/private/AddOrder".to_string(),
             websocket_url: "wss://ws.kraken.com/v2".to_string(),
             client: Client::new(),
-            socket: Mutex::new(None),
+            active: Arc::new(AtomicBool::new(false)),
         }
     }
     pub fn get_nonce() -> String {
@@ -81,10 +84,11 @@ impl KrakenExchange {
     }
 }
 
-#[async_trait::async_trait]
-impl Exchange for KrakenExchange {
+    #[async_trait::async_trait]
+    impl Exchange for KrakenExchange {
 
-   async fn subscribe_ob(&self, symbol: &str) -> Result<(), ExchangeError> {
+    async fn subscribe_ob(&self, symbol: &str) -> Result<(), ExchangeError> {
+
         if symbol != TICKER {
             return Err(ExchangeError::InvalidSymbol(symbol.to_string()));
         }
@@ -104,55 +108,50 @@ impl Exchange for KrakenExchange {
         let json_message = serde_json::to_string(&subscribe_message)
             .map_err(|e| ExchangeError::SubscriptionFailed(format!("Failed to serialize subscribe message: {}", e)))?;
 
-        let (socket, _) = connect_async(self.websocket_url.clone()).await?;
+        let (mut socket, _) = connect_async(&self.websocket_url).await?;
+        socket.send(Message::Text(json_message.into())).await?;
 
-        {
-            let mut lock = self.socket.lock().await;
-            *lock = Some(socket);
-        }
+        self.active.store(true, Ordering::SeqCst);
 
-        let mut lock = self.socket.lock().await;
-        if let Some(socket) = lock.as_mut() {
+        let active = Arc::clone(&self.active);
+        let symbol_owned = symbol.to_string();
 
-            let socket = lock.take().unwrap();
-            let (mut sink, mut stream) = socket.split();
-
-            sink.send(Message::Text(json_message.into())).await?;
-
-            tokio::spawn(async move {
-                while let Some(message) = stream.next().await {
-                    match message {
-                        Ok(Message::Text(text)) => {
-                            println!("Received: {}", text);
-                        }
-                        Ok(Message::Close(_)) => {
-                            println!("Connection closed");
-                            break;
-                        }
-                        Err(e) => {
-                            eprintln!("WebSocket error: {}", e);
-                            break;
-                        }
-                        _ => {}
+        tokio::spawn(async move {
+            while let Some(result) = socket.next().await {
+                match result {
+                    Ok(Message::Text(text)) => {
+                        println!("Received: {}", text);
                     }
+                    Ok(Message::Close(_)) => {
+                        println!("Connection closed");
+                        break;
+                    }
+                    Err(e) => {
+                        eprintln!("WebSocket error: {}", e);
+                        break;
+                    }
+                    _ => {}
                 }
-            });
-        } else {
-            return Err(ExchangeError::SubscriptionFailed("WebSocket connection missing".to_string()));
-        }
+                if !active.load(Ordering::SeqCst) {
+                    eprintln!("Unsubscribing from order book for {}", symbol_owned);
+                    socket.close(None).await.ok();
+                    active.store(false, Ordering::SeqCst);
+                    break; 
+                }
+            }
+        });
 
         Ok(())
     }
 
-    async fn unsubscribe_ob(&self, _symbol: &str) -> Result<(), ExchangeError> {
-        let mut lock = self.socket.lock().await;
 
-        if let Some(mut socket) = lock.take() {
-            socket.close(None).await?;
-            println!("Unsubscribed from order book for symbol: {}", _symbol);
-            Ok(())
-        } else {
-            Err(ExchangeError::ConnectionClosed)
+    async fn unsubscribe_ob(&self, _symbol: &str) -> Result<(), ExchangeError> {
+        match self.active.load(Ordering::SeqCst) {
+            true => {
+                self.active.store(false, Ordering::SeqCst);
+                Ok(())
+            }
+            false => Err(ExchangeError::ConnectionClosed),
         }
     }
     async fn place_order(&self, _order: Order) -> Result<(), OrderPlaceError> {

@@ -2,6 +2,7 @@ mod errors;
 mod config;
 mod exchanges;
 mod types;
+mod order_book;
 use dotenv::dotenv;
 use std::env;
 use exchanges::exchange::Exchange;
@@ -27,6 +28,5 @@ async fn main() {
         Ok(_) => println!("Unsubscribed from order book for {}", config::TICKER),
         Err(e) => eprintln!("Failed to unsubscribe: {}", e),
     }
-    println!("Unsubscribed from order book for {}", config::TICKER);
     println!("Exiting...");
 }
