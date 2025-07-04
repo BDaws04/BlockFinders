@@ -30,6 +30,7 @@ pub struct KrakenExchange {
     websocket_url: String,
     client: Client,
     active: Arc<AtomicBool>,
+    fees: f64, 
 }
 #[derive(Serialize)]
 pub struct OrderBookSubscribe {
@@ -53,6 +54,7 @@ impl KrakenExchange {
             websocket_url: "wss://ws.kraken.com/v2".to_string(),
             client: Client::new(),
             active: Arc::new(AtomicBool::new(false)),
+            fees: 0.0026, 
         }
     }
     pub fn get_nonce() -> String {
@@ -189,8 +191,4 @@ impl KrakenExchange {
             Err(OrderPlaceError::Other(format!("Failed to place order: {}", error_message)))
         }
     }
-    async fn get_fees(&self) -> Result<f64, ExchangeError> {
-        Ok(0.0026)
-    }
-
 }

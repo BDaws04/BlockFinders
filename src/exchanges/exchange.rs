@@ -8,5 +8,4 @@ pub trait Exchange {
     async fn unsubscribe_ob(&self, symbol: &str) -> Result<(), ExchangeError>;
 
     async fn place_order(&self, order: Order) -> Result<(), OrderPlaceError>;
-    async fn get_fees(&self) -> Result<f64, ExchangeError>;
 }
