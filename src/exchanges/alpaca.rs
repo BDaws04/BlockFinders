@@ -91,7 +91,6 @@ impl Exchange for AlpacaExchange {
         if let Some(result) = socket.next().await {
             match result {
                 Ok(Message::Text(text)) => {
-                    println!("Received auth response: {}", text);
                     if !text.contains("authenticated") {
                         return Err(ExchangeError::SubscriptionFailed("Authentication failed".to_string()));
                     }
@@ -127,7 +126,9 @@ impl Exchange for AlpacaExchange {
             while let Some(result) = socket.next().await {
                 match result {
                     Ok(Message::Text(text)) => {
-                        println!("Received: {}", text);
+                        if !text.contains("true"){
+                         println!("Received: {}", text);
+                        }
                     }
                     Ok(Message::Close(_)) => {
                         println!("Connection closed");

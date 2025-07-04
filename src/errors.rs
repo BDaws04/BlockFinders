@@ -17,12 +17,15 @@ pub enum ExchangeError {
 
     #[error("Unknown error: {0}")]
     Unknown(#[from] std::io::Error),
+
+    #[error("Serialization error: {0}")]
+    SerializationError(String),
 }
 
 #[derive(Error, Debug)]
 pub enum OrderPlaceError {
     #[error("HTTP error: {0}")]
-    Http(#[from] reqwest::Error),
+    Http(reqwest::Error),
 
     #[error("Base64 decode error: {0}")]
     Base64Decode(#[from] base64::DecodeError),
@@ -32,6 +35,9 @@ pub enum OrderPlaceError {
 
     #[error("Serialization error: {0}")]
     Serialization(#[from] serde_urlencoded::ser::Error),
+
+    #[error("Network error: {0}")]
+    NetworkError(reqwest::Error),
 
     #[error("Other error: {0}")]
     Other(String),
