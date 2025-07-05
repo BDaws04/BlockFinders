@@ -1,11 +1,12 @@
 use crate::exchanges::exchange::Exchange;
 use crate::errors::{ExchangeError, OrderPlaceError};
-use crate::types::{Order, OrderSide};
+use crate::types::{OBOrder, Order, OrderSide};
 use crate::config::{
     TICKER,
 };
 use serde::Serialize;
 use reqwest::Client;
+use tokio::sync::mpsc::UnboundedSender;
 use tokio_tungstenite::tungstenite::protocol::Message;
 use tokio_tungstenite::connect_async;
 use futures_util::sink::SinkExt;
@@ -14,6 +15,30 @@ use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering}
 };
+use serde::Deserialize;
+
+#[derive(Debug, Deserialize)]
+struct AlpacaBookMessage {
+    #[serde(rename = "T")]
+    msg_type: String,
+    #[serde(rename = "S")]
+    symbol: String,
+    #[serde(rename = "t")]
+    timestamp: String,
+    #[serde(default)]
+    b: Vec<AlpacaLevel>,
+    #[serde(default)]
+    a: Vec<AlpacaLevel>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AlpacaLevel {
+    #[serde(rename = "p")]
+    price: f64,
+    #[serde(rename = "s")]
+    size: f64,
+}
+
 
 #[derive(Serialize)]
 pub struct OrderRequest {
@@ -25,24 +50,28 @@ pub struct OrderRequest {
 }
 
 pub struct AlpacaExchange {
+    name: String,
     api_key: String,
     api_secret: String,
     order_url: String,
     websocket_url: String,
     client: Client,
     active: Arc<AtomicBool>,
+    sender: UnboundedSender<OBOrder>,
     fees: f64, 
 }
 
 impl AlpacaExchange {
-    pub fn new(api_key: String, api_secret: String) -> Self {
+    pub fn new(api_key: String, api_secret: String, sender: UnboundedSender<OBOrder>) -> Self {
         AlpacaExchange {
+            name: "Alpaca".to_string(),
             api_key,
             api_secret,
             order_url: "https://api.alpaca.markets/v2/orders".to_string(),
             websocket_url: "wss://stream.data.alpaca.markets/v1beta3/crypto/us".to_string(),
             client: Client::new(),
             active: Arc::new(AtomicBool::new(false)),
+            sender: sender,
             fees: 0.0
         }
     }
@@ -121,13 +150,43 @@ impl Exchange for AlpacaExchange {
 
         let active = Arc::clone(&self.active);
         let symbol_owned = symbol.to_string();
+        let exchange_name = self.name.clone();
+        let sender = self.sender.clone();
 
         tokio::spawn(async move {
             while let Some(result) = socket.next().await {
                 match result {
                     Ok(Message::Text(text)) => {
-                        if !text.contains("true"){
-                         println!("Received: {}", text);
+                        if let Ok(book_updates) = serde_json::from_str::<Vec<AlpacaBookMessage>>(&text) {
+                            for update in book_updates {
+                                for bid in update.b {
+                                    if bid.size > 0.0 {
+                                        let ob_order = OBOrder {
+                                            exchange: exchange_name.clone(),
+                                            side: OrderSide::Buy,
+                                            price: (bid.price * 100.0) as u64,
+                                            volume: (bid.size * 1_000_000.0) as u64,
+                                        };
+                                        if let Err(e) = sender.send(ob_order) {
+                                            eprintln!("Failed to send OBOrder: {}", e);
+                                        }
+                                    }
+                                }
+
+                                for ask in update.a {
+                                    if ask.size > 0.0 {
+                                        let ob_order = OBOrder {
+                                            exchange: exchange_name.clone(),
+                                            side: OrderSide::Sell,
+                                            price: (ask.price * 100.0) as u64,
+                                            volume: (ask.size * 1_000_000.0) as u64,
+                                        };
+                                        if let Err(e) = sender.send(ob_order) {
+                                            eprintln!("Failed to send OBOrder: {}", e);
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                     Ok(Message::Close(_)) => {
@@ -140,11 +199,12 @@ impl Exchange for AlpacaExchange {
                     }
                     _ => {}
                 }
+
                 if !active.load(Ordering::SeqCst) {
                     eprintln!("Unsubscribing from order book for {}", symbol_owned);
                     socket.close(None).await.ok();
                     active.store(false, Ordering::SeqCst);
-                    break; 
+                    break;
                 }
             }
         });

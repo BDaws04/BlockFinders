@@ -1,11 +1,12 @@
 use crate::exchanges::exchange::Exchange;
 use crate::errors::{ExchangeError, OrderPlaceError};
-use crate::types::{Order, OrderSide};
+use crate::types::{OBOrder, Order, OrderSide};
 use crate::config::{
     TICKER,
 };
 use reqwest::Client;
 use serde_json::json;
+use tokio::sync::mpsc::UnboundedSender;
 use tokio_tungstenite::tungstenite::protocol::Message;
 use tokio_tungstenite::connect_async;
 use futures_util::sink::SinkExt;
@@ -18,30 +19,49 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
 use hex::encode;
-use crate::config::ORDER_BOOK_DEPTH;
+use serde::Deserialize;
 
 type HmacSha256 = Hmac<Sha256>;
 
 
+#[derive(Debug, Deserialize)]
+struct BybitDeltaMessage {
+    topic: String,
+    #[serde(rename = "type")]
+    msg_type: String,
+    data: BybitDeltaData,
+}
+
+#[derive(Debug, Deserialize)]
+struct BybitDeltaData {
+    s: String,
+    b: Vec<[String; 2]>,
+    a: Vec<[String; 2]>,
+}
+
 pub struct BybitExchange {
+    name: String,
     api_key: String,
     api_secret: String,
     order_url: String,
     websocket_url: String,
     client: Client,
     active: Arc<AtomicBool>,
+    sender: UnboundedSender<OBOrder>,
     fees: f64, 
 }
 
 impl BybitExchange {
-    pub fn new(api_key: String, api_secret: String) -> Self {
+    pub fn new(api_key: String, api_secret: String, sender: UnboundedSender<OBOrder>) -> Self {
         BybitExchange {
+            name: "Bybit".to_string(),
             api_key,
             api_secret,
             order_url: "https://api.bybit.com/v5/order/create".to_string(),
             websocket_url: "wss://stream.bybit.com/v5/public/spot".to_string(),
             client: Client::new(),
             active: Arc::new(AtomicBool::new(false)),
+            sender: sender,
             fees: 0.0,
         }
     }
@@ -55,7 +75,7 @@ impl Exchange for BybitExchange {
         }
 
         let pair = format!("{}USDT", symbol);
-        let order_book_arg = format!("orderbook.{}.{}",ORDER_BOOK_DEPTH, pair);
+        let order_book_arg = format!("orderbook.50.{}", pair);
 
         let subscribe_message = json!({
             "op": "subscribe",
@@ -75,30 +95,76 @@ impl Exchange for BybitExchange {
 
         self.active.store(true, Ordering::SeqCst);
 
-        while let Some(result) = socket.next().await {
-            match result {
-                Ok(Message::Text(text)) => {
-                    println!("Received: {}", text);
+        let active = Arc::clone(&self.active);
+        let symbol_owned = symbol.to_string();
+        let exchange_name = self.name.clone();
+        let sender = self.sender.clone();
+
+        tokio::spawn(async move {
+            while let Some(result) = socket.next().await {
+                match result {
+                    Ok(Message::Text(text)) => {
+                        if let Ok(delta_msg) = serde_json::from_str::<BybitDeltaMessage>(&text) {
+                            for bid in delta_msg.data.b {
+                                if let (Ok(price), Ok(qty)) = (
+                                    bid[0].parse::<f64>(),
+                                    bid[1].parse::<f64>(),
+                                ) {
+                                    if qty > 0.0 {
+                                        let ob_order = OBOrder {
+                                            exchange: exchange_name.clone(),
+                                            side: OrderSide::Buy,
+                                            price: (price * 100.0) as u64,
+                                            volume: (qty * 1_000_000.0) as u64,
+                                        };
+                                        if let Err(e) = sender.send(ob_order) {
+                                            eprintln!("Failed to send OBOrder: {}", e);
+                                        }
+                                    }
+                                }
+                            }
+                            for ask in delta_msg.data.a {
+                                if let (Ok(price), Ok(qty)) = (
+                                    ask[0].parse::<f64>(),
+                                    ask[1].parse::<f64>(),
+                                ) {
+                                    if qty > 0.0 {
+                                        let ob_order = OBOrder {
+                                            exchange: exchange_name.clone(),
+                                            side: OrderSide::Sell,
+                                            price: (price * 100.0) as u64,
+                                            volume: (qty * 1_000_000.0) as u64,
+                                        };
+                                        if let Err(e) = sender.send(ob_order) {
+                                            eprintln!("Failed to send OBOrder: {}", e);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Ok(Message::Close(_)) => {
+                        println!("Connection closed");
+                        break;
+                    }
+                    Err(e) => {
+                        eprintln!("WebSocket error: {}", e);
+                        break;
+                    }
+                    _ => {}
                 }
-                Ok(Message::Close(_)) => {
-                    println!("Connection closed");
+
+                if !active.load(Ordering::SeqCst) {
+                    eprintln!("Unsubscribing from order book for {}", symbol_owned);
+                    socket.close(None).await.ok();
+                    active.store(false, Ordering::SeqCst);
                     break;
                 }
-                Err(e) => {
-                    return Err(ExchangeError::WebSocketError(e));
-                }
-                _ => {}
             }
-            if !self.active.load(Ordering::SeqCst) {
-                eprintln!("Unsubscribing from order book for {}", symbol);
-                socket.close(None).await.ok();
-                self.active.store(false, Ordering::SeqCst);
-                break; 
-            }
-        }
-
+        });
         Ok(())
     }
+
     async fn unsubscribe_ob(&self, symbol: &str) -> Result<(), ExchangeError> {
         match self.active.load(Ordering::SeqCst) {
             true => {

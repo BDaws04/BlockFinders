@@ -42,3 +42,27 @@ pub enum OrderPlaceError {
     #[error("Other error: {0}")]
     Other(String),
 }
+
+#[derive(Error, Debug)]
+pub enum OrderBookError {
+    #[error("Failed to receive order: {0}")]
+    ReceiveError(String),
+
+    #[error("Failed to process order: {0}")]
+    ProcessError(String),
+
+    #[error("Order book is empty")]
+    EmptyOrderBook,
+
+    #[error("Unknown error: {0}")]
+    Unknown(#[from] std::io::Error),
+
+    #[error("Insufficient volume: {0}")]
+    InsufficientVolume(String),
+
+    #[error("Channel send error")]
+    ChannelSendError,
+
+    #[error("Inactive order book")]
+    InactiveOrderBook,
+}
