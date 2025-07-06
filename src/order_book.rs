@@ -33,30 +33,28 @@ impl SideOrderBook {
             while self.pause.load(Ordering::SeqCst) {
                 tokio::task::yield_now().await;
             }
-            match self.receiver.recv().await {
-                Some(order) => {
+
+            tokio::select! {
+                Some(order) = self.receiver.recv() => {
                     self.process_order(order);
                 }
-                None => {
-                    self.active.store(false, Ordering::SeqCst);
-                    break;
-                }
-            }
-            match self.query_receiver.recv().await {
-                Some(order_request) => {
+
+                Some(order_request) = self.query_receiver.recv() => {
                     if let Ok(response) = self.get_best_quote(order_request) {
                         println!("Best quote: {:?}", response);
                     } else {
                         println!("Failed to get best quote");
                     }
                 }
-                None => {
+
+                else => {
                     self.active.store(false, Ordering::SeqCst);
                     break;
                 }
             }
         }
     }
+
 
     fn process_order(&mut self, order: OBOrder) {
         let price = order.price;

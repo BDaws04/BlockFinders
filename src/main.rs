@@ -75,8 +75,8 @@ async fn main() {
 
     let request = OrderRequest {
         symbol: config::TICKER.to_string(),
-        side: OrderSide::Sell,
-        volume: 1.0,
+        side: OrderSide::Buy,
+        volume: 10.0,
     };
 
     match order_book.get_quote(request).await {
