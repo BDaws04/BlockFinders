@@ -3,6 +3,7 @@ mod config;
 mod exchanges;
 mod types;
 mod order_book;
+mod benchmark;
 
 use dotenv::dotenv;
 use std::{env, sync::Arc};
