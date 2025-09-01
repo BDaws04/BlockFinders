@@ -81,9 +81,7 @@ async fn main() {
     };
 
     match order_book.get_quote(request).await {
-        Ok(response) => {
-            println!("Best quote: {:?}", response);
-        }
+        Ok(_) => {},
         Err(e) => {
             eprintln!("Error getting best quote: {}", e);
         }

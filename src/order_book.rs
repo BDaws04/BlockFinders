@@ -88,7 +88,6 @@ impl SideOrderBook {
     }
 
     pub fn get_best_quote(&self, order: OrderRequest) -> Result<PriceResponse, OrderBookError> {
-        println!("Made it to get_best_quote with order: {:?}", order);
         if !self.active.load(Ordering::SeqCst) {
             return Err(OrderBookError::InactiveOrderBook);
         }
@@ -227,7 +226,6 @@ impl UnifiedOrderBook {
     pub async fn run(&self) {
         while self.active.load(Ordering::SeqCst) {
             let maybe_order = {
-                // Lock mutex just for the recv call
                 let mut receiver = self.main_receiver.lock().await;
                 receiver.recv().await
             };
